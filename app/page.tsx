@@ -83,6 +83,7 @@ const VOICE_PERSONAS: PersonaConfig[] = [
   }
 ];
 
+
 interface AnalysisError {
   category: string;
   deducted_points: number;
@@ -240,7 +241,10 @@ export default function Home() {
     return voices.find((v) => v.lang.includes("ko") || v.lang === "ko-KR") || null;
   };
 
-  // 음성 재생 (TTS)
+  // 5단계 속도 지원 타입으로 변경 (기본값 0.8)
+  const [speechRate, setSpeechRate] = useState<number>(0.8);
+
+  // 음성 재생 (선택된 배속 speechRate 기본 적용)
   const speakText = (text: string, customRate?: number) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       alert("현재 브라우저는 음성 읽어주기 기능을 지원하지 않습니다.");
@@ -257,7 +261,8 @@ export default function Home() {
 
     const utterance = new SpeechSynthesisUtterance(formattedText);
     utterance.lang = "ko-KR";
-    utterance.rate = customRate || currentConfig.rate;
+    // 전달된 customRate가 없으면 설정된 speechRate 배속 사용
+    utterance.rate = customRate || speechRate;
     utterance.pitch = currentConfig.pitch;
 
     const bestVoice = getBestKoreanVoice();
@@ -628,41 +633,70 @@ export default function Home() {
           />
         </div>
 
-        {/* 낭독 캐릭터 선택기(페르소나 탭): 받아쓰기나 소리내 읽기 모드에서만 표시 */}
+        {/* 낭독 캐릭터 및 속도 조절기 (받아쓰기, 소리내 읽기 공통 표시) */}
         {learningMode !== "copy" && (
-          <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                <span>🎭 낭독 목소리 스타일 고르기</span>
-              </span>
-              <span className="text-[11px] text-amber-800 font-medium">
-                {VOICE_PERSONAS.find((p) => p.id === selectedPersona)?.description}
-              </span>
+          <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 space-y-3 animate-in fade-in">
+            {/* 목소리 스타일 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <span>🎭 낭독 목소리 스타일 고르기</span>
+                </span>
+                <span className="text-[11px] text-amber-800 font-medium">
+                  {VOICE_PERSONAS.find((p) => p.id === selectedPersona)?.description}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {VOICE_PERSONAS.map((persona) => (
+                  <button
+                    key={persona.id}
+                    onClick={() => {
+                      setSelectedPersona(persona.id);
+                      if (isSpeaking) {
+                        window.speechSynthesis.cancel();
+                        setIsSpeaking(false);
+                      }
+                    }}
+                    className={`p-2 rounded-xl text-left border transition cursor-pointer flex items-center gap-2 ${
+                      selectedPersona === persona.id
+                        ? "bg-amber-500 text-white border-amber-600 shadow-sm font-bold"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-amber-100/50"
+                    }`}
+                  >
+                    <span className="text-lg">{persona.icon}</span>
+                    <div>
+                      <p className="text-xs leading-none">{persona.name}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {VOICE_PERSONAS.map((persona) => (
-                <button
-                  key={persona.id}
-                  onClick={() => {
-                    setSelectedPersona(persona.id);
-                    if (isSpeaking) {
-                      window.speechSynthesis.cancel();
-                      setIsSpeaking(false);
-                    }
-                  }}
-                  className={`p-2 rounded-xl text-left border transition cursor-pointer flex items-center gap-2 ${
-                    selectedPersona === persona.id
-                      ? "bg-amber-500 text-white border-amber-600 shadow-sm font-bold"
-                      : "bg-white text-slate-700 border-slate-200 hover:bg-amber-100/50"
-                  }`}
-                >
-                  <span className="text-lg">{persona.icon}</span>
-                  <div>
-                    <p className="text-xs leading-none">{persona.name}</p>
-                  </div>
-                </button>
-              ))}
+            {/* 5단계 속도 조절 바 */}
+            <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-950">⚡ 읽기 속도</span>
+              <div className="flex items-center gap-1 bg-white border border-amber-200 rounded-xl p-1 text-xs">
+                {[0.4, 0.6, 0.8, 1.0, 1.2].map((rate) => (
+                  <button
+                    key={rate}
+                    onClick={() => {
+                      setSpeechRate(rate);
+                      if (isSpeaking) {
+                        window.speechSynthesis.cancel();
+                        setIsSpeaking(false);
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer text-[11px] ${
+                      speechRate === rate
+                        ? "bg-amber-500 text-white shadow-xs"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {rate.toFixed(1)}x
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -677,21 +711,63 @@ export default function Home() {
               </span>
             </div>
 
+            {/* 받아쓰기 듣기 컨트롤러 */}
             <div className="flex items-center gap-2">
+              {/* 1) 현재 문장 듣기 / 멈추기 */}
               <button
-                onClick={() => sentences[currentSentenceIndex] && speakText(sentences[currentSentenceIndex])}
-                disabled={isSpeaking}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-xs md:text-sm rounded-xl shadow transition flex items-center justify-center gap-2 cursor-pointer"
+                onClick={() => {
+                  if (isSpeaking) {
+                    window.speechSynthesis.cancel();
+                    setIsSpeaking(false);
+                  } else {
+                    if (sentences[currentSentenceIndex]) {
+                      speakText(sentences[currentSentenceIndex]);
+                    }
+                  }
+                }}
+                className={`flex-1 py-3 text-white font-bold text-xs md:text-sm rounded-xl shadow transition flex items-center justify-center gap-2 cursor-pointer ${
+                  isSpeaking
+                    ? "bg-rose-500 hover:bg-rose-600 animate-pulse"
+                    : "bg-amber-500 hover:bg-amber-600"
+                }`}
               >
-                <Volume2 className={`w-4 h-4 ${isSpeaking ? "animate-bounce" : ""}`} />
-                <span>{isSpeaking ? "읽어주는 중..." : `🔊 ${currentSentenceIndex + 1}번 문장 듣기`}</span>
+                {isSpeaking ? (
+                  <>
+                    <Square className="w-4 h-4 fill-white" />
+                    <span>읽기 멈추기</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-4 h-4" />
+                    <span>🔊 {currentSentenceIndex + 1}번 문장 듣기</span>
+                  </>
+                )}
               </button>
 
+              {/* 2) 지문 전체 듣기 / 멈추기 */}
               <button
-                onClick={() => speakText(originalText)}
-                className="px-3 py-3 bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold rounded-xl transition whitespace-nowrap cursor-pointer"
+                onClick={() => {
+                  if (isSpeaking) {
+                    window.speechSynthesis.cancel();
+                    setIsSpeaking(false);
+                  } else {
+                    speakText(originalText);
+                  }
+                }}
+                className={`px-3 py-3 border text-xs font-bold rounded-xl transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  isSpeaking
+                    ? "bg-rose-100 border-rose-300 text-rose-700 hover:bg-rose-200"
+                    : "bg-white hover:bg-amber-100 text-amber-900 border-amber-200"
+                }`}
               >
-                전체 듣기
+                {isSpeaking ? (
+                  <>
+                    <Square className="w-3.5 h-3.5 fill-rose-600" />
+                    <span>전체 멈춤</span>
+                  </>
+                ) : (
+                  <span>전체 듣기</span>
+                )}
               </button>
             </div>
 
