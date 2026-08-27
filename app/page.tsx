@@ -5,7 +5,8 @@ import confetti from "canvas-confetti";
 import { 
   Camera, RefreshCw, Award, Sparkles, CheckCircle2, 
   BookOpen, Lightbulb, ChevronRight, Play, Pause, 
-  Timer, Trophy, Gift, X, ScanText, UploadCloud, ListFilter, Edit3
+  Timer, Trophy, Gift, X, ScanText, UploadCloud, ListFilter, 
+  Edit3, Volume2, Eye, EyeOff, RotateCcw, PenTool, Headphones
 } from "lucide-react";
 
 // 초등 2학년 과학 예시 데이터
@@ -53,6 +54,9 @@ interface Coupon {
 }
 
 export default function Home() {
+  // 모드 전환: "copy"(손글씨 필사) | "dictation"(듣고 받아쓰기)
+  const [learningMode, setLearningMode] = useState<"copy" | "dictation">("copy");
+
   const [docTitle, setDocTitle] = useState("사용자글");
   const [originalText, setOriginalText] = useState(SCIENCE_EXAMPLES[0].text);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -60,6 +64,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+
+  // 받아쓰기 전용 상태
+  const [hideText, setHideText] = useState(true); // 텍스트 가림막
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechRate, setSpeechRate] = useState<0.8 | 1.0>(0.8); // 받아쓰기 기본 0.8배속 천천히
 
   // 모달 상태
   const [showExampleModal, setShowExampleModal] = useState(false);
@@ -74,12 +84,17 @@ export default function Home() {
   const [totalExp, setTotalExp] = useState(0);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
 
- // 상단 ref 선언부
-const fileInputRef = useRef<HTMLInputElement>(null);
-const sourceImageInputRef = useRef<HTMLInputElement>(null);
-const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const sourceImageInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 텍스트 내용 변경 시 높이 자동 조절 (스크롤바 제거)
+  // 텍스트를 문장 단위로 분리 (. ! ? 기준)
+  const sentences = originalText
+    .split(/(?<=[.?!])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  // 높이 자동 조절
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -126,7 +141,40 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
 
   const { level, currentExp, title } = getLevelInfo(totalExp);
 
-  // 원본 책/지문 사진 OCR 추출 핸들러
+  // 음성 재생 (TTS) 함수
+  const speakText = (text: string, rate: number = 0.8) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      alert("현재 브라우저는 음성 읽어주기 기능을 지원하지 않습니다.");
+      return;
+    }
+
+    window.speechSynthesis.cancel(); // 이전 음성 정지
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "ko-KR";
+    utterance.rate = rate; // 0.8: 천천히 또박또박
+    utterance.pitch = 1.05; // 부드럽고 다정한 톤
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // 문장별 읽기
+  const handlePlayCurrentSentence = () => {
+    if (sentences.length > 0 && sentences[currentSentenceIndex]) {
+      speakText(sentences[currentSentenceIndex], speechRate);
+    }
+  };
+
+  // 전체 글 읽기
+  const handlePlayFullText = () => {
+    speakText(originalText, speechRate);
+  };
+
+  // 원본 사진 OCR 핸들러
   const handleSourceImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -143,7 +191,8 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
         if (!res.ok) throw new Error("원본 글 텍스트 추출에 실패했습니다.");
         const data = await res.json();
         setOriginalText(data.text);
-        setDocTitle("사용자글"); // 사진으로 추출 시 기본 제목
+        setDocTitle("사용자글");
+        setCurrentSentenceIndex(0);
       } catch (err: any) {
         alert(err.message || "텍스트 추출 중 오류가 발생했습니다.");
       } finally {
@@ -201,9 +250,10 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
           origin: { y: 0.6 }
         });
 
+        const modeTag = learningMode === "dictation" ? "받아쓰기" : "필사";
         const newCoupon: Coupon = {
           id: Date.now().toString(),
-          title: `🏆 [${docTitle}] 황금 칭찬 쿠폰`,
+          title: `🏆 [${docTitle} (${modeTag})] 황금 칭찬 쿠폰`,
           date: new Date().toLocaleDateString("ko-KR"),
           timeSpent: savedTimeSpent || formatTime(seconds)
         };
@@ -221,7 +271,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
   return (
     <main className="min-h-screen bg-amber-50/40 p-4 md:p-8 max-w-3xl mx-auto font-sans pb-16">
       {/* 상단 레벨 & 쿠폰함 바 */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-amber-200/80 mb-6 flex items-center justify-between">
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-amber-200/80 mb-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 bg-amber-500 text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-sm">
             Lv.{level}
@@ -252,34 +302,65 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
       </div>
 
       {/* 헤더 */}
-      <header className="text-center mb-6">
+      <header className="text-center mb-5">
         <h1 className="text-2xl md:text-3xl font-black text-amber-950 flex items-center justify-center gap-2">
           ✏️ 쑥쑥 문해력 탐험대
         </h1>
         <p className="text-xs md:text-sm text-amber-800 mt-1">
-          시간을 재며 바르게 쓰고, 100점 황금 칭찬 쿠폰을 모아보세요!
+          초등 2학년을 위한 보고 쓰기(필사) & 귀로 듣는 받아쓰기 탐험!
         </p>
       </header>
 
-      {/* 1. 원본 글 준비하기 섹션 */}
+      {/* 학습 모드 전환 탭 */}
+      <div className="flex bg-amber-200/60 p-1 rounded-2xl mb-5 shadow-inner">
+        <button
+          onClick={() => {
+            setLearningMode("copy");
+            setHideText(false);
+          }}
+          className={`flex-1 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 transition ${
+            learningMode === "copy"
+              ? "bg-white text-amber-950 shadow-sm"
+              : "text-amber-800 hover:text-amber-950"
+          }`}
+        >
+          <PenTool className="w-4 h-4 text-amber-600" />
+          <span>✍️ 보고 따라 쓰기 (필사)</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setLearningMode("dictation");
+            setHideText(true);
+          }}
+          className={`flex-1 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 transition ${
+            learningMode === "dictation"
+              ? "bg-white text-amber-950 shadow-sm"
+              : "text-amber-800 hover:text-amber-950"
+          }`}
+        >
+          <Headphones className="w-4 h-4 text-amber-600" />
+          <span>🎧 귀로 듣고 받아쓰기</span>
+        </button>
+      </div>
+
+      {/* 1. 원본 글 설정 및 오디오 플레이어 섹션 */}
       <section className="bg-white rounded-2xl p-5 shadow-sm border border-amber-100 mb-5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 font-bold text-slate-800 text-sm">
             <BookOpen className="w-4 h-4 text-amber-600" />
-            <span>1. 원본 글 준비하기</span>
+            <span>1. 학습할 지문 준비</span>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* 예시 글 목록보기 버튼 */}
             <button
               onClick={() => setShowExampleModal(true)}
               className="flex items-center gap-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-2.5 py-1.5 rounded-lg transition cursor-pointer"
             >
               <ListFilter className="w-3.5 h-3.5 text-slate-600" />
-              <span>📚 예시 글 목록보기</span>
+              <span>📚 예시 글 목록</span>
             </button>
 
-            {/* 원본 사진 OCR 버튼 */}
             <input
               type="file"
               accept="image/*"
@@ -300,14 +381,14 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
               ) : (
                 <>
                   <ScanText className="w-3.5 h-3.5 text-amber-600" />
-                  <span>📷 책 사진 찍어 넣기</span>
+                  <span>📷 책 사진 추출</span>
                 </>
               )}
             </button>
           </div>
         </div>
 
-        {/* 글 제목 입력 필드 */}
+        {/* 제목 입력 필드 */}
         <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
           <Edit3 className="w-4 h-4 text-amber-600 shrink-0" />
           <span className="text-xs font-bold text-slate-500 shrink-0">제목:</span>
@@ -320,24 +401,133 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
           />
         </div>
 
-        {/* 원본 텍스트 직접 수정/확인 창 */}
-        <textarea
-          ref={textareaRef}
-          value={originalText}
-          onChange={(e) => setOriginalText(e.target.value)}
-          placeholder="여기에 원본 문장을 직접 쓰거나 사진을 찍어 글자를 가져오세요."
-          className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-amber-500 text-slate-800 resize-none leading-relaxed overflow-hidden"
-        />
+        {/* 받아쓰기 전용 오디오 플레이어 컨트롤러 */}
+        {learningMode === "dictation" && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
+                <Volume2 className="w-4 h-4 text-amber-600" />
+                <span>문장별 받아쓰기 듣기 ({currentSentenceIndex + 1}/{sentences.length})</span>
+              </span>
+
+              {/* 속도 조절 */}
+              <div className="flex items-center gap-1 bg-white border border-amber-200 rounded-lg p-0.5 text-[11px]">
+                <button
+                  onClick={() => setSpeechRate(0.8)}
+                  className={`px-2 py-0.5 rounded font-bold transition ${
+                    speechRate === 0.8 ? "bg-amber-500 text-white" : "text-slate-600"
+                  }`}
+                >
+                  0.8x (천천히)
+                </button>
+                <button
+                  onClick={() => setSpeechRate(1.0)}
+                  className={`px-2 py-0.5 rounded font-bold transition ${
+                    speechRate === 1.0 ? "bg-amber-500 text-white" : "text-slate-600"
+                  }`}
+                >
+                  1.0x (보통)
+                </button>
+              </div>
+            </div>
+
+            {/* 현재 문장 재생 버튼 및 이전/다음 이동 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePlayCurrentSentence}
+                disabled={isSpeaking}
+                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-xs md:text-sm rounded-xl shadow transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Volume2 className={`w-4 h-4 ${isSpeaking ? "animate-bounce" : ""}`} />
+                <span>{isSpeaking ? "대장이 읽어주는 중..." : `🔊 ${currentSentenceIndex + 1}번 문장 또박또박 듣기`}</span>
+              </button>
+
+              <button
+                onClick={() => speakText(originalText, speechRate)}
+                className="px-3 py-3 bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold rounded-xl transition whitespace-nowrap cursor-pointer"
+                title="지문 전체 듣기"
+              >
+                전체 듣기
+              </button>
+            </div>
+
+            {/* 문장 네비게이션 버튼 */}
+            <div className="flex items-center justify-between text-xs pt-1">
+              <button
+                disabled={currentSentenceIndex === 0}
+                onClick={() => {
+                  setCurrentSentenceIndex(prev => Math.max(0, prev - 1));
+                  window.speechSynthesis.cancel();
+                }}
+                className="px-3 py-1.5 bg-white border border-amber-200 rounded-lg disabled:opacity-40 font-semibold text-slate-700 cursor-pointer"
+              >
+                ◀ 이전 문장
+              </button>
+
+              {/* 가림막 토글 */}
+              <button
+                onClick={() => setHideText(!hideText)}
+                className="flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
+              >
+                {hideText ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{hideText ? "지문 슬쩍 보기" : "지문 다시 가리기"}</span>
+              </button>
+
+              <button
+                disabled={currentSentenceIndex >= sentences.length - 1}
+                onClick={() => {
+                  setCurrentSentenceIndex(prev => Math.min(sentences.length - 1, prev + 1));
+                  window.speechSynthesis.cancel();
+                }}
+                className="px-3 py-1.5 bg-white border border-amber-200 rounded-lg disabled:opacity-40 font-semibold text-slate-700 cursor-pointer"
+              >
+                다음 문장 ▶
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 텍스트 영역 (가림막 모드 지원) */}
+        <div className="relative">
+          {learningMode === "dictation" && hideText && (
+            <div className="absolute inset-0 bg-amber-50/95 backdrop-blur-xs rounded-xl flex flex-col items-center justify-center p-4 z-10 border border-amber-200/80 text-center">
+              <Headphones className="w-8 h-8 text-amber-500 mb-1" />
+              <p className="text-xs font-bold text-amber-950">받아쓰기 모드가 켜져 있어요!</p>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                위의 <b>[🔊 문장 또박또박 듣기]</b> 버튼을 누르고 공책에 써보세요.
+              </p>
+              <button
+                onClick={() => setHideText(false)}
+                className="mt-2.5 text-[11px] px-3 py-1 bg-white border border-amber-300 text-amber-800 rounded-lg font-bold shadow-xs hover:bg-amber-100 transition cursor-pointer"
+              >
+                👀 글자 잠깐 확인하기
+              </button>
+            </div>
+          )}
+
+          <textarea
+            ref={textareaRef}
+            value={originalText}
+            onChange={(e) => {
+              setOriginalText(e.target.value);
+              setCurrentSentenceIndex(0);
+            }}
+            placeholder="여기에 원본 문장을 직접 쓰거나 사진을 찍어 글자를 가져오세요."
+            className="w-full text-sm p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-amber-500 text-slate-800 resize-none leading-relaxed overflow-hidden"
+          />
+        </div>
       </section>
 
-      {/* 2. 손글씨 필사 타이머 & 사진 업로드 */}
+      {/* 2. 손글씨 필사/받아쓰기 타이머 & 사진 업로드 */}
       <section className="bg-white rounded-2xl p-5 shadow-sm border border-amber-100 mb-6 space-y-4">
         {/* 스톱워치 */}
         <div className="bg-amber-50/60 border border-amber-200/60 rounded-xl p-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Timer className="w-5 h-5 text-amber-600 animate-pulse" />
             <div>
-              <p className="text-[11px] font-semibold text-amber-800">필사 시간 측정</p>
+              <p className="text-[11px] font-semibold text-amber-800">
+                {learningMode === "dictation" ? "받아쓰기 소요 시간" : "필사 소요 시간"}
+              </p>
               <p className="text-base font-black text-amber-950 font-mono">
                 {formatTime(seconds)}
               </p>
@@ -347,7 +537,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
           <div className="flex gap-1.5">
             <button
               onClick={() => setTimerRunning(!timerRunning)}
-              className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-bold transition ${
+              className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
                 timerRunning
                   ? "bg-rose-500 hover:bg-rose-600 text-white"
                   : "bg-amber-500 hover:bg-amber-600 text-white"
@@ -359,7 +549,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
                 </>
               ) : (
                 <>
-                  <Play className="w-3.5 h-3.5" /> 쓰기 시작
+                  <Play className="w-3.5 h-3.5" /> 시작
                 </>
               )}
             </button>
@@ -368,7 +558,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
                 setTimerRunning(false);
                 setSeconds(0);
               }}
-              className="text-xs px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-semibold"
+              className="text-xs px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-semibold cursor-pointer"
             >
               초기화
             </button>
@@ -379,7 +569,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
         <div>
           <div className="flex items-center gap-2 mb-2 font-bold text-slate-800 text-sm">
             <Camera className="w-4 h-4 text-amber-600" />
-            <span>2. 손글씨 사진 올리기</span>
+            <span>2. 공책에 쓴 손글씨 사진 올리기</span>
           </div>
 
           <input
@@ -395,7 +585,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
               <img src={imagePreview} alt="손글씨 미리보기" className="w-full max-h-64 object-contain mx-auto" />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-2 right-2 bg-black/60 hover:bg-black/70 text-white text-xs px-3 py-1.5 rounded-lg backdrop-blur-sm transition"
+                className="absolute bottom-2 right-2 bg-black/60 hover:bg-black/70 text-white text-xs px-3 py-1.5 rounded-lg backdrop-blur-sm transition cursor-pointer"
               >
                 사진 다시 고르기
               </button>
@@ -406,14 +596,18 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
               className="w-full py-7 border-2 border-dashed border-amber-200 rounded-xl flex flex-col items-center justify-center gap-1.5 text-amber-800 bg-amber-50/50 hover:bg-amber-100/50 transition cursor-pointer mb-3"
             >
               <UploadCloud className="w-7 h-7 text-amber-500" />
-              <span className="text-xs font-semibold">필사를 마친 후 사진을 찍거나 올려주세요</span>
+              <span className="text-xs font-semibold">
+                {learningMode === "dictation"
+                  ? "받아쓰기를 마친 후 공책 사진을 찍어 올려주세요"
+                  : "필사를 마친 후 사진을 찍거나 올려주세요"}
+              </span>
             </button>
           )}
 
           <button
             onClick={handleAnalyze}
             disabled={loading || !selectedImage}
-            className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm"
+            className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm cursor-pointer"
           >
             {loading ? (
               <>
@@ -439,7 +633,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
               </p>
               {savedTimeSpent && (
                 <p className="text-[11px] text-amber-700 font-semibold mt-1">
-                  ⏱️ 필사 완주 시간: {savedTimeSpent}
+                  ⏱️ {learningMode === "dictation" ? "받아쓰기" : "필사"} 완주 시간: {savedTimeSpent}
                 </p>
               )}
             </div>
@@ -536,7 +730,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
               setResult(null);
               setSeconds(0);
             }}
-            className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
+            className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" /> 새로운 사진으로 다시 도전하기
           </button>
@@ -567,6 +761,7 @@ const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
                   onClick={() => {
                     setDocTitle(ex.title);
                     setOriginalText(ex.text);
+                    setCurrentSentenceIndex(0);
                     setSeconds(0);
                     setTimerRunning(false);
                     setShowExampleModal(false);
