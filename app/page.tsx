@@ -242,32 +242,89 @@ export default function Home() {
   };
 
   // 5단계 속도 지원 타입으로 변경 (기본값 0.8)
-  const [speechRate, setSpeechRate] = useState<number>(0.8);
+  const [speechRate, setSpeechRate] = useState<number>(0.8);// 페르소나별 최적의 목소리 매칭 함수
+  const getPersonaVoice = (persona: VoicePersona): SpeechSynthesisVoice | null => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
+    const voices = window.speechSynthesis.getVoices().filter((v) => v.lang.includes("ko") || v.lang === "ko-KR");
+    if (voices.length === 0) return null;
 
-  // 음성 재생 (선택된 배속 speechRate 기본 적용)
+    // 1. 남성 보이스 탐색 (탐사보도 진행자, 뉴스 앵커용)
+    const maleVoice = voices.find(
+      (v) =>
+        v.name.includes("InJoon") || // Microsoft Windows 남성 신경망 보이스
+        v.name.includes("Male") ||
+        v.name.includes("남성") ||
+        v.name.includes("MinHo")
+    );
+
+    // 2. 고음질 여성/성우 보이스 (초등 선생님, 엄마 동화책용)
+    const femaleNaturalVoice = voices.find(
+      (v) =>
+        v.name.includes("SunHi") || // Microsoft Windows 여성 자연 음성
+        v.name.includes("Natural") ||
+        v.name.includes("Google") ||
+        v.name.includes("Yuna") ||
+        v.name.includes("Sora")
+    );
+
+    switch (persona) {
+      case "detective": // 🕵️ 그것이 알고싶다: 남성 저음 보이스 최우선
+        return maleVoice || voices[0];
+
+      case "anchor": // 🎙️ 9시 뉴스: 남성 음성 또는 정돈된 표준 보이스
+        return maleVoice || femaleNaturalVoice || voices[0];
+
+      case "mom": // 📖 엄마의 동화책: 가장 부드러운 여성 내추럴 보이스
+        return femaleNaturalVoice || voices.find((v) => !v.name.includes("Male") && !v.name.includes("InJoon")) || voices[0];
+
+      case "teacher": // 👩‍🏫 초등 선생님: 밝은 여성 보이스
+      default:
+        return femaleNaturalVoice || voices[0];
+    }
+  };
+
+  // 음성 재생 (TTS) 개선 함수
   const speakText = (text: string, customRate?: number) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       alert("현재 브라우저는 음성 읽어주기 기능을 지원하지 않습니다.");
       return;
     }
 
-    window.speechSynthesis.cancel();
+    window.speechSynthesis.cancel(); // 이전 음성 취소
 
     const currentConfig = VOICE_PERSONAS.find((p) => p.id === selectedPersona) || VOICE_PERSONAS[0];
 
+    // 페르소나별 호흡 조절
     const formattedText = text
       .replace(/,/g, currentConfig.pauseLength)
       .replace(/\./g, ". ");
 
     const utterance = new SpeechSynthesisUtterance(formattedText);
     utterance.lang = "ko-KR";
-    // 전달된 customRate가 없으면 설정된 speechRate 배속 사용
+    
+    // 속도 설정: 커스텀 속도가 있으면 적용하되, 페르소나 기본 속도 비율을 반영
     utterance.rate = customRate || speechRate;
-    utterance.pitch = currentConfig.pitch;
 
-    const bestVoice = getBestKoreanVoice();
-    if (bestVoice) {
-      utterance.voice = bestVoice;
+    // 캐릭터별 뚜렷한 피치(Pitch) 배정으로 음색 차별화
+    switch (selectedPersona) {
+      case "teacher":
+        utterance.pitch = 1.15; // 밝고 친절한 톤
+        break;
+      case "mom":
+        utterance.pitch = 1.20; // 높고 부드럽고 다정한 구연동화 톤
+        break;
+      case "anchor":
+        utterance.pitch = 0.95; // 단정하고 신뢰감 있는 표준 뉴스 톤
+        break;
+      case "detective":
+        utterance.pitch = 0.65; // 묵직하고 가라앉은 중저음 톤
+        break;
+    }
+
+    // 선택된 페르소나에 맞는 성별/타입 보이스 할당
+    const matchedVoice = getPersonaVoice(selectedPersona);
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
     }
 
     utterance.onstart = () => setIsSpeaking(true);
