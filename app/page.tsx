@@ -6,7 +6,7 @@ import {
   Camera, RefreshCw, Award, Sparkles, CheckCircle2, 
   BookOpen, Lightbulb, ChevronRight, Play, Pause, 
   Timer, Trophy, Gift, X, ScanText, UploadCloud, ListFilter, 
-  Edit3, Volume2, Eye, EyeOff, PenTool, Headphones, Mic, Square, VolumeUp
+  Edit3, Volume2, Eye, EyeOff, PenTool, Headphones, Mic, Square
 } from "lucide-react";
 
 // 초등 2학년 과학 예시 데이터
@@ -28,6 +28,58 @@ const SCIENCE_EXAMPLES = [
     title: "씨앗의 싹트기",
     level: 2,
     text: "땅속에 심은 작은 씨앗은 물과 햇빛을 받으면 싹을 틔웁니다. 뿌리가 먼저 땅속 깊이 내려가 물을 마시고, 줄기와 잎이 흙을 뚫고 올라와 햇빛을 만납니다."
+  }
+];
+
+// 4대 페르소나 목소리 설정
+type VoicePersona = "teacher" | "mom" | "anchor" | "detective";
+
+interface PersonaConfig {
+  id: VoicePersona;
+  name: string;
+  icon: string;
+  description: string;
+  rate: number;
+  pitch: number;
+  pauseLength: string;
+}
+
+const VOICE_PERSONAS: PersonaConfig[] = [
+  {
+    id: "teacher",
+    name: "초등 선생님",
+    icon: "👩‍🏫",
+    description: "다정하고 또박또박한 설명 톤",
+    rate: 0.85,
+    pitch: 1.08,
+    pauseLength: ", ",
+  },
+  {
+    id: "mom",
+    name: "엄마의 동화책",
+    icon: "📖",
+    description: "따뜻하고 포근한 구연동화 톤",
+    rate: 0.78,
+    pitch: 1.15,
+    pauseLength: "... ",
+  },
+  {
+    id: "anchor",
+    name: "9시 뉴스 앵커",
+    icon: "🎙️",
+    description: "선명하고 신뢰감 있는 표준 낭독",
+    rate: 0.95,
+    pitch: 0.98,
+    pauseLength: ", ",
+  },
+  {
+    id: "detective",
+    name: "탐사보도 진행자",
+    icon: "🕵️",
+    description: "진중하고 묵직한 호기심 자극 톤",
+    rate: 0.82,
+    pitch: 0.82,
+    pauseLength: "... ",
   }
 ];
 
@@ -67,11 +119,12 @@ interface Coupon {
 }
 
 export default function Home() {
-  // 모드: "copy" (필사) | "dictation" (받아쓰기) | "read" (소리내어 낭독)
+  // 모드: "copy" (필사) | "dictation" (받아쓰기) | "read" (낭독)
   const [learningMode, setLearningMode] = useState<"copy" | "dictation" | "read">("copy");
 
   const [docTitle, setDocTitle] = useState("사용자글");
   const [originalText, setOriginalText] = useState(SCIENCE_EXAMPLES[0].text);
+  const [selectedPersona, setSelectedPersona] = useState<VoicePersona>("teacher");
   
   // 손글씨 모드 상태
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -89,17 +142,16 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  // 받아쓰기 전용 상태
+  // 받아쓰기 & 오디오 상태
   const [hideText, setHideText] = useState(true);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [speechRate, setSpeechRate] = useState<0.8 | 1.0>(0.8);
 
   // 모달 상태
   const [showExampleModal, setShowExampleModal] = useState(false);
   const [showCouponModal, setShowCouponModal] = useState(false);
 
-  // 타이머 관련 상태
+  // 타이머 상태
   const [timerRunning, setTimerRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [savedTimeSpent, setSavedTimeSpent] = useState<string | null>(null);
@@ -112,11 +164,13 @@ export default function Home() {
   const sourceImageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // 문장 단위 분리 (. ! ? 기준)
   const sentences = originalText
     .split(/(?<=[.?!])\s+/)
     .map(s => s.trim())
     .filter(s => s.length > 0);
 
+  // 원본 글 textarea 높이 자동 조절 (스크롤바 제거)
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -163,19 +217,53 @@ export default function Home() {
 
   const { level, currentExp, title } = getLevelInfo(totalExp);
 
-  // 음성 재생 (TTS) 
-  const speakText = (text: string, rate: number = 0.8) => {
+  // 고음질 한국어 음성 탐색
+  const getBestKoreanVoice = (): SpeechSynthesisVoice | null => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
+    const voices = window.speechSynthesis.getVoices();
+    
+    const naturalVoice = voices.find(
+      (v) => v.lang.includes("ko") && (v.name.includes("Natural") || v.name.includes("Online"))
+    );
+    if (naturalVoice) return naturalVoice;
+
+    const googleVoice = voices.find(
+      (v) => v.lang.includes("ko") && v.name.includes("Google")
+    );
+    if (googleVoice) return googleVoice;
+
+    const yunaVoice = voices.find(
+      (v) => v.lang.includes("ko") && (v.name.includes("Yuna") || v.name.includes("Sora"))
+    );
+    if (yunaVoice) return yunaVoice;
+
+    return voices.find((v) => v.lang.includes("ko") || v.lang === "ko-KR") || null;
+  };
+
+  // 음성 재생 (TTS)
+  const speakText = (text: string, customRate?: number) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       alert("현재 브라우저는 음성 읽어주기 기능을 지원하지 않습니다.");
       return;
     }
 
-    window.speechSynthesis.cancel(); // 이전 음성 정지
+    window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const currentConfig = VOICE_PERSONAS.find((p) => p.id === selectedPersona) || VOICE_PERSONAS[0];
+
+    const formattedText = text
+      .replace(/,/g, currentConfig.pauseLength)
+      .replace(/\./g, ". ");
+
+    const utterance = new SpeechSynthesisUtterance(formattedText);
     utterance.lang = "ko-KR";
-    utterance.rate = rate; // 또박또박한 속도
-    utterance.pitch = 1.05;
+    utterance.rate = customRate || currentConfig.rate;
+    utterance.pitch = currentConfig.pitch;
+
+    const bestVoice = getBestKoreanVoice();
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+    }
 
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
@@ -184,13 +272,13 @@ export default function Home() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // 모범 낭독 재생 / 멈춤 토글 
+  // 모범 낭독 토글 함수
   const handleToggleModelReading = () => {
     if (isSpeaking) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
     } else {
-      speakText(originalText, 0.9);
+      speakText(originalText);
     }
   };
 
@@ -212,7 +300,6 @@ export default function Home() {
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         setAudioBlob(audioBlob);
         setAudioUrl(URL.createObjectURL(audioBlob));
-        // 마이크 스트림 트랙 종료
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -424,12 +511,16 @@ export default function Home() {
         </p>
       </header>
 
-      {/* 학습 모드 전환 탭 (3개 모드) */}
+      {/* 학습 모드 전환 탭 */}
       <div className="grid grid-cols-3 gap-1.5 bg-amber-200/60 p-1.5 rounded-2xl mb-5 shadow-inner">
         <button
           onClick={() => {
             setLearningMode("copy");
             setHideText(false);
+            if (isSpeaking) {
+              window.speechSynthesis.cancel();
+              setIsSpeaking(false);
+            }
           }}
           className={`py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-1 transition cursor-pointer ${
             learningMode === "copy"
@@ -445,6 +536,10 @@ export default function Home() {
           onClick={() => {
             setLearningMode("dictation");
             setHideText(true);
+            if (isSpeaking) {
+              window.speechSynthesis.cancel();
+              setIsSpeaking(false);
+            }
           }}
           className={`py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-1 transition cursor-pointer ${
             learningMode === "dictation"
@@ -460,6 +555,10 @@ export default function Home() {
           onClick={() => {
             setLearningMode("read");
             setHideText(false);
+            if (isSpeaking) {
+              window.speechSynthesis.cancel();
+              setIsSpeaking(false);
+            }
           }}
           className={`py-2 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-1 transition cursor-pointer ${
             learningMode === "read"
@@ -529,38 +628,58 @@ export default function Home() {
           />
         </div>
 
+        {/* 낭독 캐릭터 선택기(페르소나 탭): 받아쓰기나 소리내 읽기 모드에서만 표시 */}
+        {learningMode !== "copy" && (
+          <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                <span>🎭 낭독 목소리 스타일 고르기</span>
+              </span>
+              <span className="text-[11px] text-amber-800 font-medium">
+                {VOICE_PERSONAS.find((p) => p.id === selectedPersona)?.description}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {VOICE_PERSONAS.map((persona) => (
+                <button
+                  key={persona.id}
+                  onClick={() => {
+                    setSelectedPersona(persona.id);
+                    if (isSpeaking) {
+                      window.speechSynthesis.cancel();
+                      setIsSpeaking(false);
+                    }
+                  }}
+                  className={`p-2 rounded-xl text-left border transition cursor-pointer flex items-center gap-2 ${
+                    selectedPersona === persona.id
+                      ? "bg-amber-500 text-white border-amber-600 shadow-sm font-bold"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-amber-100/50"
+                  }`}
+                >
+                  <span className="text-lg">{persona.icon}</span>
+                  <div>
+                    <p className="text-xs leading-none">{persona.name}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 받아쓰기 모드 전용 컨트롤러 */}
         {learningMode === "dictation" && (
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
                 <Volume2 className="w-4 h-4 text-amber-600" />
-                <span>문장별 듣기 ({currentSentenceIndex + 1}/{sentences.length})</span>
+                <span>문장별 받아쓰기 듣기 ({currentSentenceIndex + 1}/{sentences.length})</span>
               </span>
-
-              <div className="flex items-center gap-1 bg-white border border-amber-200 rounded-lg p-0.5 text-[11px]">
-                <button
-                  onClick={() => setSpeechRate(0.8)}
-                  className={`px-2 py-0.5 rounded font-bold transition ${
-                    speechRate === 0.8 ? "bg-amber-500 text-white" : "text-slate-600"
-                  }`}
-                >
-                  0.8x (천천히)
-                </button>
-                <button
-                  onClick={() => setSpeechRate(1.0)}
-                  className={`px-2 py-0.5 rounded font-bold transition ${
-                    speechRate === 1.0 ? "bg-amber-500 text-white" : "text-slate-600"
-                  }`}
-                >
-                  1.0x (보통)
-                </button>
-              </div>
             </div>
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => sentences[currentSentenceIndex] && speakText(sentences[currentSentenceIndex], speechRate)}
+                onClick={() => sentences[currentSentenceIndex] && speakText(sentences[currentSentenceIndex])}
                 disabled={isSpeaking}
                 className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-xs md:text-sm rounded-xl shadow transition flex items-center justify-center gap-2 cursor-pointer"
               >
@@ -569,7 +688,7 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => speakText(originalText, speechRate)}
+                onClick={() => speakText(originalText)}
                 className="px-3 py-3 bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold rounded-xl transition whitespace-nowrap cursor-pointer"
               >
                 전체 듣기
@@ -582,6 +701,7 @@ export default function Home() {
                 onClick={() => {
                   setCurrentSentenceIndex(prev => Math.max(0, prev - 1));
                   window.speechSynthesis.cancel();
+                  setIsSpeaking(false);
                 }}
                 className="px-3 py-1.5 bg-white border border-amber-200 rounded-lg disabled:opacity-40 font-semibold text-slate-700 cursor-pointer"
               >
@@ -601,6 +721,7 @@ export default function Home() {
                 onClick={() => {
                   setCurrentSentenceIndex(prev => Math.min(sentences.length - 1, prev + 1));
                   window.speechSynthesis.cancel();
+                  setIsSpeaking(false);
                 }}
                 className="px-3 py-1.5 bg-white border border-amber-200 rounded-lg disabled:opacity-40 font-semibold text-slate-700 cursor-pointer"
               >
