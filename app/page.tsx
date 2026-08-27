@@ -74,8 +74,18 @@ export default function Home() {
   const [totalExp, setTotalExp] = useState(0);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const sourceImageInputRef = useRef<HTMLInputElement>(null);
+ // 상단 ref 선언부
+const fileInputRef = useRef<HTMLInputElement>(null);
+const sourceImageInputRef = useRef<HTMLInputElement>(null);
+const textareaRef = useRef<HTMLTextAreaElement>(null); // 추가
+
+  // 텍스트 내용 변경 시 높이 자동 조절 (스크롤바 제거)
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [originalText]);
 
   useEffect(() => {
     const savedExp = localStorage.getItem("literacy_exp");
@@ -312,11 +322,11 @@ export default function Home() {
 
         {/* 원본 텍스트 직접 수정/확인 창 */}
         <textarea
+          ref={textareaRef}
           value={originalText}
           onChange={(e) => setOriginalText(e.target.value)}
-          rows={4}
           placeholder="여기에 원본 문장을 직접 쓰거나 사진을 찍어 글자를 가져오세요."
-          className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-amber-500 text-slate-800 resize-none leading-relaxed"
+          className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-amber-500 text-slate-800 resize-none leading-relaxed overflow-hidden"
         />
       </section>
 
