@@ -5,7 +5,7 @@ import confetti from "canvas-confetti";
 import { 
   Camera, RefreshCw, Award, Sparkles, CheckCircle2, 
   BookOpen, Lightbulb, ChevronRight, Play, Pause, 
-  Timer, Trophy, Gift, X 
+  Timer, Trophy, Gift, X, ScanText, UploadCloud, ListFilter, Edit3
 } from "lucide-react";
 
 // 초등 2학년 과학 예시 데이터
@@ -53,25 +53,30 @@ interface Coupon {
 }
 
 export default function Home() {
+  const [docTitle, setDocTitle] = useState("사용자글");
   const [originalText, setOriginalText] = useState(SCIENCE_EXAMPLES[0].text);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
 
-  // 1. 타이머 관련 상태
+  // 모달 상태
+  const [showExampleModal, setShowExampleModal] = useState(false);
+  const [showCouponModal, setShowCouponModal] = useState(false);
+
+  // 타이머 관련 상태
   const [timerRunning, setTimerRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [savedTimeSpent, setSavedTimeSpent] = useState<string | null>(null);
 
-  // 2. 게이미피케이션 상태 (localStorage)
+  // 게이미피케이션 상태
   const [totalExp, setTotalExp] = useState(0);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [showCouponModal, setShowCouponModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sourceImageInputRef = useRef<HTMLInputElement>(null);
 
-  // 컴포넌트 마운트 시 localStorage 로드
   useEffect(() => {
     const savedExp = localStorage.getItem("literacy_exp");
     const savedCoupons = localStorage.getItem("literacy_coupons");
@@ -79,7 +84,6 @@ export default function Home() {
     if (savedCoupons) setCoupons(JSON.parse(savedCoupons));
   }, []);
 
-  // 타이머 인터벌 제어
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (timerRunning) {
@@ -94,14 +98,12 @@ export default function Home() {
     };
   }, [timerRunning]);
 
-  // 시간 포맷 변환 (초 -> 분:초)
   const formatTime = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     return `${mins}분 ${secs < 10 ? "0" : ""}${secs}초`;
   };
 
-  // 레벨 계산 함수
   const getLevelInfo = (exp: number) => {
     const level = Math.floor(exp / 100) + 1;
     const currentExp = exp % 100;
@@ -114,7 +116,33 @@ export default function Home() {
 
   const { level, currentExp, title } = getLevelInfo(totalExp);
 
-  // 이미지 업로드
+  // 원본 책/지문 사진 OCR 추출 핸들러
+  const handleSourceImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setOcrLoading(true);
+
+      const formData = new FormData();
+      formData.append("sourceImage", file);
+
+      try {
+        const res = await fetch("/api/ocr", {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) throw new Error("원본 글 텍스트 추출에 실패했습니다.");
+        const data = await res.json();
+        setOriginalText(data.text);
+        setDocTitle("사용자글"); // 사진으로 추출 시 기본 제목
+      } catch (err: any) {
+        alert(err.message || "텍스트 추출 중 오류가 발생했습니다.");
+      } finally {
+        setOcrLoading(false);
+      }
+    }
+  };
+
+  // 손글씨 이미지 핸들러
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -122,7 +150,6 @@ export default function Home() {
       setImagePreview(URL.createObjectURL(file));
       setResult(null);
 
-      // 타이머가 켜져 있다면 자동 정지 및 시간 기록
       if (timerRunning) {
         setTimerRunning(false);
       }
@@ -153,12 +180,10 @@ export default function Home() {
       const data: AnalysisResult = await res.json();
       setResult(data);
 
-      // 경험치 누적 및 저장
       const newExp = totalExp + data.total_score;
       setTotalExp(newExp);
       localStorage.setItem("literacy_exp", newExp.toString());
 
-      // 100점 달성 시 칭찬 쿠폰 발급 및 팡파레
       if (data.total_score === 100) {
         confetti({
           particleCount: 160,
@@ -168,7 +193,7 @@ export default function Home() {
 
         const newCoupon: Coupon = {
           id: Date.now().toString(),
-          title: "🏆 문해력 마스터 황금 칭찬 쿠폰",
+          title: `🏆 [${docTitle}] 황금 칭찬 쿠폰`,
           date: new Date().toLocaleDateString("ko-KR"),
           timeSpent: savedTimeSpent || formatTime(seconds)
         };
@@ -185,7 +210,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-amber-50/40 p-4 md:p-8 max-w-3xl mx-auto font-sans pb-16">
-      {/* 1. 상단 게이미피케이션 상태바 */}
+      {/* 상단 레벨 & 쿠폰함 바 */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-amber-200/80 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 bg-amber-500 text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-sm">
@@ -198,7 +223,6 @@ export default function Home() {
                 누적 {totalExp} EXP
               </span>
             </div>
-            {/* 경험치 바 */}
             <div className="w-36 md:w-48 bg-slate-100 h-2 rounded-full mt-1.5 overflow-hidden">
               <div
                 className="bg-amber-500 h-full transition-all duration-500"
@@ -208,7 +232,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 칭찬 쿠폰 보관함 버튼 */}
         <button
           onClick={() => setShowCouponModal(true)}
           className="flex items-center gap-1.5 bg-orange-100 hover:bg-orange-200 text-orange-800 text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer"
@@ -228,47 +251,78 @@ export default function Home() {
         </p>
       </header>
 
-      {/* 2. 예시 선택 및 원본 입력창 */}
-      <section className="bg-white rounded-2xl p-5 shadow-sm border border-amber-100 mb-5">
-        <div className="flex items-center justify-between mb-2 font-bold text-slate-800 text-sm">
-          <div className="flex items-center gap-1.5">
+      {/* 1. 원본 글 준비하기 섹션 */}
+      <section className="bg-white rounded-2xl p-5 shadow-sm border border-amber-100 mb-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-bold text-slate-800 text-sm">
             <BookOpen className="w-4 h-4 text-amber-600" />
-            <span>초등 2학년 과학 이야기</span>
+            <span>1. 원본 글 준비하기</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* 예시 글 목록보기 버튼 */}
+            <button
+              onClick={() => setShowExampleModal(true)}
+              className="flex items-center gap-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-2.5 py-1.5 rounded-lg transition cursor-pointer"
+            >
+              <ListFilter className="w-3.5 h-3.5 text-slate-600" />
+              <span>📚 예시 글 목록보기</span>
+            </button>
+
+            {/* 원본 사진 OCR 버튼 */}
+            <input
+              type="file"
+              accept="image/*"
+              ref={sourceImageInputRef}
+              onChange={handleSourceImageChange}
+              className="hidden"
+            />
+            <button
+              onClick={() => sourceImageInputRef.current?.click()}
+              disabled={ocrLoading}
+              className="flex items-center gap-1 text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1.5 rounded-lg transition cursor-pointer"
+            >
+              {ocrLoading ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                  <span>글자 추출 중...</span>
+                </>
+              ) : (
+                <>
+                  <ScanText className="w-3.5 h-3.5 text-amber-600" />
+                  <span>📷 책 사진 찍어 넣기</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-          {SCIENCE_EXAMPLES.map((ex) => (
-            <button
-              key={ex.id}
-              onClick={() => {
-                setOriginalText(ex.text);
-                setSeconds(0);
-                setTimerRunning(false);
-              }}
-              className={`text-xs px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition ${
-                originalText === ex.text
-                  ? "bg-amber-500 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {ex.title}
-            </button>
-          ))}
+        {/* 글 제목 입력 필드 */}
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+          <Edit3 className="w-4 h-4 text-amber-600 shrink-0" />
+          <span className="text-xs font-bold text-slate-500 shrink-0">제목:</span>
+          <input
+            type="text"
+            value={docTitle}
+            onChange={(e) => setDocTitle(e.target.value)}
+            placeholder="제목을 입력하세요"
+            className="w-full text-xs md:text-sm font-semibold text-slate-800 bg-transparent focus:outline-none"
+          />
         </div>
 
+        {/* 원본 텍스트 직접 수정/확인 창 */}
         <textarea
           value={originalText}
           onChange={(e) => setOriginalText(e.target.value)}
           rows={4}
-          placeholder="여기에 원본 문장을 직접 입력할 수도 있어요."
+          placeholder="여기에 원본 문장을 직접 쓰거나 사진을 찍어 글자를 가져오세요."
           className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-amber-500 text-slate-800 resize-none leading-relaxed"
         />
       </section>
 
-      {/* 3. 손글씨 필사 타이머 & 사진 업로드 */}
+      {/* 2. 손글씨 필사 타이머 & 사진 업로드 */}
       <section className="bg-white rounded-2xl p-5 shadow-sm border border-amber-100 mb-6 space-y-4">
-        {/* 스톱워치 컨트롤러 */}
+        {/* 스톱워치 */}
         <div className="bg-amber-50/60 border border-amber-200/60 rounded-xl p-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Timer className="w-5 h-5 text-amber-600 animate-pulse" />
@@ -315,7 +369,7 @@ export default function Home() {
         <div>
           <div className="flex items-center gap-2 mb-2 font-bold text-slate-800 text-sm">
             <Camera className="w-4 h-4 text-amber-600" />
-            <span>손글씨 사진 올리기</span>
+            <span>2. 손글씨 사진 올리기</span>
           </div>
 
           <input
@@ -341,7 +395,7 @@ export default function Home() {
               onClick={() => fileInputRef.current?.click()}
               className="w-full py-7 border-2 border-dashed border-amber-200 rounded-xl flex flex-col items-center justify-center gap-1.5 text-amber-800 bg-amber-50/50 hover:bg-amber-100/50 transition cursor-pointer mb-3"
             >
-              <Camera className="w-7 h-7 text-amber-500" />
+              <UploadCloud className="w-7 h-7 text-amber-500" />
               <span className="text-xs font-semibold">필사를 마친 후 사진을 찍거나 올려주세요</span>
             </button>
           )}
@@ -363,10 +417,9 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 4. 분석 결과 카드 (학습 피드백 우선) */}
+      {/* 3. 분석 결과 카드 */}
       {result && (
         <section className="bg-white rounded-3xl p-6 shadow-xl border border-amber-200 space-y-6 animate-in fade-in duration-300">
-          {/* 탐험 대장의 격려 */}
           <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
@@ -382,7 +435,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* AI가 읽은 손글씨 */}
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/70">
             <p className="text-xs font-bold text-slate-500 mb-1.5">📝 AI가 읽어낸 내 손글씨</p>
             <p className="text-xs md:text-sm text-slate-800 leading-relaxed font-normal bg-white p-3 rounded-xl border border-slate-100">
@@ -390,7 +442,6 @@ export default function Home() {
             </p>
           </div>
 
-          {/* 초등 2학년 눈높이 학습 피드백 */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Lightbulb className="w-4 h-4 text-amber-500" />
@@ -422,7 +473,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 분류별 감점 내역 */}
           {result.errors.length > 0 && (
             <div className="pt-4 border-t border-slate-100">
               <h3 className="text-xs font-bold text-slate-500 mb-2">
@@ -446,7 +496,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* 최종 점수 및 배지 획득 카드 */}
           <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 text-center">
             <span className="text-xs font-bold text-amber-700 uppercase tracking-wide">
               최종 점수 및 획득 경험치
@@ -470,7 +519,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 다시 쓰기 버튼 */}
           <button
             onClick={() => {
               setSelectedImage(null);
@@ -485,6 +533,63 @@ export default function Home() {
         </section>
       )}
 
+      {/* 4. 예시 글 목록 모달 */}
+      {showExampleModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-5 max-w-md w-full shadow-2xl border border-amber-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 text-sm">
+                <BookOpen className="w-4 h-4 text-amber-600" />
+                <span>초등 2학년 과학 예시 글 목록</span>
+              </div>
+              <button
+                onClick={() => setShowExampleModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {SCIENCE_EXAMPLES.map((ex) => (
+                <div
+                  key={ex.id}
+                  onClick={() => {
+                    setDocTitle(ex.title);
+                    setOriginalText(ex.text);
+                    setSeconds(0);
+                    setTimerRunning(false);
+                    setShowExampleModal(false);
+                  }}
+                  className={`p-3.5 rounded-2xl border transition cursor-pointer ${
+                    originalText === ex.text
+                      ? "bg-amber-50 border-amber-300 ring-2 ring-amber-200"
+                      : "bg-slate-50 border-slate-200 hover:bg-amber-50/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-xs text-slate-800">{ex.title}</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+                      난이도 Lv.{ex.level}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
+                    {ex.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowExampleModal(false)}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 5. 칭찬 쿠폰함 모달 */}
       {showCouponModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
@@ -496,7 +601,7 @@ export default function Home() {
               </div>
               <button
                 onClick={() => setShowCouponModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-full"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -527,7 +632,7 @@ export default function Home() {
 
             <button
               onClick={() => setShowCouponModal(false)}
-              className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition"
+              className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition cursor-pointer"
             >
               닫기
             </button>
