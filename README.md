@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ✏️ 쑥쑥 문해력 탐험대 (Literacy Adventure)
 
-## Getting Started
+초등학교 2학년 학생들의 기초 문해력 향상을 위한 멀티모달 AI 기반 국어 학습 웹 애플리케이션입니다.  
+**보고 쓰기(필사)**, **귀로 듣기(받아쓰기)**, **소리 내어 읽기(낭독)** 3대 영역을 통합 학습하며, AI 피드백과 게이미피케이션(경험치, 레벨, 황금 칭찬 쿠폰)을 통해 학습 동기를 부여합니다.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🌟 주요 기능
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 1. 3가지 맞춤형 학습 모드
+* **✍️ 보고 따라 쓰기 (필사)**:
+  * 초등 2학년 과학/국어 예시 지문 또는 사용자 입력 지문을 공책에 직접 씁니다.
+  * 손글씨 사진을 촬영/업로드하면 AI가 한 글자, 띄어쓰기, 문장부호(쉼표, 마침표, 물음표)를 정밀 대조합니다.
+* **🎧 귀로 듣고 받아쓰기**:
+  * 지문 가림막(블라인드) 모드를 지원하여 지문을 보지 않고 귀로만 듣고 씁니다.
+  * 문장별 듣기, 전체 듣기, 5단계 속도 조절(0.4x ~ 1.2x) 및 재생/멈춤 토글을 지원합니다.
+* **🎙️ 소리 내어 읽기 (낭독 탐험)**:
+  * 마이크 녹음 기능을 통해 아이가 소리 내어 읽은 목소리(오디오)를 Gemini에 전송합니다.
+  * 빠뜨린 글자(누락), 오독/발음 오류, 문장부호에 맞춘 끊어 읽기(호흡)를 정밀 진단합니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. 4가지 페르소나 낭독 보이스 (TTS Engine)
+Web Speech API와 정밀 튜닝된 피치(Pitch)/속도(Rate)/호흡 간격을 활용하여 4가지 음성 스타일을 제공합니다:
+* **👩‍🏫 초등 선생님**: 다정하고 밝은 톤으로 명랑하게 설명
+* **📖 엄마의 동화책**: 높은 음도와 부드러운 호흡의 감미로운 구연동화 톤
+* **🎙️ 9시 뉴스 앵커**: 또박또박하고 신뢰감 있는 표준 뉴스 리포트 톤
+* **🕵️ 탐사보도 진행자**: 묵직하고 낮은 중저음 톤으로 호기심과 몰입감 유발
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 3. 초등 저학년 눈높이 AI 피드백
+* 점수 위주의 압박 대신 **친근한 비유와 구체적인 예시**를 최상단에 노출합니다.
+  * *(예: "마침표가 없으면 문장이 숨을 쉬지 못해 와다다 달려가요!", "띄어쓰기를 안 하면 단어들이 찰떡처럼 붙어 뜻이 달라져요!")*
+* 하단에 오류 분류(맞춤법, 띄어쓰기, 문장부호)별 감점 내역 요약 및 최종 점수를 배치합니다.
 
-## Learn More
+### 4. 원본 지문 OCR 자동 추출
+* 책이나 교과서, 시험지 사진을 찍어 올리면 Google Gemini OCR을 통해 원본 텍스트를 즉시 추출합니다.
+* 텍스트 길이에 따라 입력창 높이가 자동으로 확장되어 스크롤바 없이 쾌적하게 편집할 수 있습니다.
 
-To learn more about Next.js, take a look at the following resources:
+### 5. 게이미피케이션 & 성취 보상
+* **누적 경험치(EXP) & 레벨**: 학습 점수에 따라 새싹 탐험가부터 전설의 마스터까지 레벨업됩니다.
+* **필사/낭독 스톱워치**: 학습 소요 시간을 자동으로 기록합니다.
+* **100점 황금 칭찬 쿠폰함**: 100점 달성 시 팡파레 효과와 함께 황금 쿠폰이 발급되어 모달 보관함(`localStorage`)에 영구 저장됩니다.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🛠️ 기술 스택
 
-## Deploy on Vercel
+* **Framework**: Next.js 14+ (App Router), React, TypeScript
+* **Styling**: Tailwind CSS, Lucide React (Icons), Canvas Confetti
+* **AI & OCR Engine**: Google Gemini API (`@google/genai`, `gemini-3.6-flash`)
+* **Voice / Audio**: Web Speech API (`SpeechSynthesis`), Web Audio API (`MediaRecorder`)
+* **Storage**: Browser `localStorage` (DB 연동 전 클라이언트 저장소)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📂 프로젝트 구조
+
+```text
+├── app/
+│   ├── api/
+│   │   ├── analyze/
+│   │   │   └── route.ts         # 손글씨 이미지 맞춤법/띄어쓰기/문장부호 대조 채점 API
+│   │   ├── ocr/
+│   │   │   └── route.ts         # 원본 책/지문 사진 텍스트 자동 추출 API
+│   │   └── read-analyze/
+│   │       └── route.ts         # 낭독 녹음 오디오 발음/유창성/호흡 분석 API
+│   ├── favicon.ico
+│   ├── globals.css
+│   ├── layout.tsx
+│   └── page.tsx                 # 메인 학습 대시보드 (통합 UI 및 상태 관리)
+├── public/
+├── .env.local                   # 환경 변수 (API 키)
+├── package.json
+├── tailwind.config.ts
+└── tsconfig.json
